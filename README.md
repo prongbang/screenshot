@@ -5,7 +5,7 @@ TypeScript library for taking screenshots of a full web page from:
 - Browser: capture current tab/page via DOM rendering (`captureFullPageScreenshot`)
 - Node.js: capture a URL through headless browser (`captureUrlScreenshot`) with optional Puppeteer
 
-รองรับทั้ง capture ทั้งหน้าและ element ที่ต้องการ (ระบุผ่าน `target` เป็น `id` หรือ `HTMLElement`).
+Supports capturing either the whole page or a specific element (specify via `target` as an `id` or `HTMLElement`).
 
 ## Install
 
