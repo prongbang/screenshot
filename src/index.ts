@@ -213,6 +213,68 @@ function toBlobFromCanvas(
 }
 
 /**
+ * Trigger a browser download of a blob using a temporary object URL.
+ */
+export function downloadBlob(blob: Blob, filename: string): void {
+  if (!isBrowser()) {
+    throw new Error("`downloadBlob` only runs in browser (window/document not found).");
+  }
+
+  const objectUrl = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = objectUrl;
+  anchor.download = filename;
+  anchor.rel = "noopener";
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(objectUrl);
+}
+
+export interface DownloadProgress {
+  loaded: number;
+  total: number;
+}
+
+export interface DownloadBlobOptions {
+  onProgress?: (progress: DownloadProgress) => void;
+}
+
+/**
+ * Trigger a browser download of a blob, reporting read progress before saving.
+ */
+export async function downloadBlobWithProgress(
+  blob: Blob,
+  filename: string,
+  options: DownloadBlobOptions = {}
+): Promise<void> {
+  if (!isBrowser()) {
+    throw new Error("`downloadBlobWithProgress` only runs in browser (window/document not found).");
+  }
+
+  const { onProgress } = options;
+  const total = blob.size;
+
+  if (onProgress && total > 0) {
+    const reader = blob.stream().getReader();
+    let loaded = 0;
+
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+      loaded += value.byteLength;
+      onProgress({ loaded, total });
+    }
+  } else {
+    onProgress?.({ loaded: total, total });
+  }
+
+  downloadBlob(blob, filename);
+}
+
+/**
  * Capture a full-page screenshot from current browser window.
  */
 export async function captureFullPageScreenshot(
