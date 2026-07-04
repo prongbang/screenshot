@@ -1,0 +1,66 @@
+version: "3"
+
+vars:
+  PKG_DIR: .
+
+tasks:
+  clean:
+    desc: Remove built artifacts
+    cmds:
+      - rm -rf dist
+
+  install:
+    desc: Install dependencies for the screenshot package
+    cmds:
+      - 'cd {{.PKG_DIR}} && if [ -f package-lock.json ]; then npm ci; else npm install --no-audit --no-fund; fi'
+
+  install:ci:
+    desc: Install with npm ci (requires package-lock.json)
+    cmds:
+      - 'cd {{.PKG_DIR}} && npm ci'
+
+  build:
+    desc: Build TypeScript library
+    deps: [install]
+    cmds:
+      - cd {{.PKG_DIR}} && npm run build
+
+  prepublish:
+    desc: Pre-publish checks (build + npm publish dry-run)
+    deps: [build]
+    cmds:
+      - cd {{.PKG_DIR}} && npm pack --dry-run
+
+  publish:dry:
+    desc: Preview publish payload (safe check, no upload)
+    deps: [build]
+    cmds:
+      - cd {{.PKG_DIR}} && npm publish --dry-run
+
+  publish:
+    desc: Publish to npm with precheck
+    deps: [prepublish]
+    cmds:
+      - 'cd {{.PKG_DIR}} && if [ -n "$NPM_OTP" ]; then npm publish --access public --otp "$NPM_OTP"; else npm publish --access public; fi'
+
+  publish:ci:
+    desc: CI publish command (requires NODE_AUTH_TOKEN)
+    deps: [prepublish]
+    cmds:
+      - 'if [ -z "${NODE_AUTH_TOKEN}" ] && [ -z "${NPM_TOKEN}" ]; then echo "Missing NODE_AUTH_TOKEN or NPM_TOKEN for publish."; exit 1; fi'
+      - 'cd {{.PKG_DIR}} && if [ -n "$NPM_OTP" ]; then npm publish --access public --otp "$NPM_OTP"; else npm publish --access public; fi'
+
+  bump:patch:
+    desc: Bump patch version and show new version
+    cmds:
+      - 'cd {{.PKG_DIR}} && npm version patch -m "chore: bump patch for screenshot"'
+
+  bump:minor:
+    desc: Bump minor version and show new version
+    cmds:
+      - 'cd {{.PKG_DIR}} && npm version minor -m "chore: bump minor for screenshot"'
+
+  bump:major:
+    desc: Bump major version and show new version
+    cmds:
+      - 'cd {{.PKG_DIR}} && npm version major -m "chore: bump major for screenshot"'

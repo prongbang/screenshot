@@ -1,0 +1,54 @@
+{
+  "name": "@prongbang/screenshot",
+  "version": "0.1.0",
+  "description": "TypeScript utilities for full-page screenshots in browser and optional Node environments.",
+  "private": false,
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "rm -rf dist",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "screenshot",
+    "full-page",
+    "capture",
+    "typescript",
+    "browser",
+    "puppeteer"
+  ],
+  "author": "Open-source contributor",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^22.10.6",
+    "typescript": "^5.6.2"
+  },
+  "dependencies": {
+    "html2canvas": "^1.4.1"
+  },
+  "peerDependencies": {
+    "pdf-lib": "^1.17.1",
+    "puppeteer": "^24.0.0"
+  },
+  "peerDependenciesMeta": {
+    "pdf-lib": {
+      "optional": true
+    },
+    "puppeteer": {
+      "optional": true
+    }
+  }
+}
