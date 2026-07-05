@@ -62,6 +62,78 @@ const validateDimension = (value?: number): number | undefined => {
   return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : undefined;
 };
 
+const decodeSvgDataUri = (url: string): string | null => {
+  const commaIndex = url.indexOf(",");
+  if (commaIndex === -1) {
+    return null;
+  }
+  const meta = url.slice(0, commaIndex);
+  const payload = url.slice(commaIndex + 1);
+
+  if (!meta.includes("image/svg+xml")) {
+    return null;
+  }
+
+  try {
+    if (meta.includes("base64")) {
+      return typeof atob !== "undefined" ? atob(payload) : null;
+    }
+    return decodeURIComponent(payload);
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Convert CSS `mask-image` icons into `background-image` so html2canvas-pro can
+ * rasterize them. Iconify/UnoCSS utilities (e.g. `i-lucide:flame`) render icons
+ * as `background-color: currentColor` + `mask-image: <svg>`, which the canvas
+ * renderer draws as a solid colored box because it does not support CSS masks.
+ * Runs against a cloned document, so the live DOM is never modified.
+ */
+const inlineMaskedIcons = (root: Document | HTMLElement): void => {
+  const doc = "defaultView" in root ? (root as Document) : root.ownerDocument;
+  const view = doc?.defaultView ?? (typeof window !== "undefined" ? window : null);
+  if (!view) {
+    return;
+  }
+
+  const scope: ParentNode = root as ParentNode;
+  const elements = scope.querySelectorAll<HTMLElement>("*");
+
+  elements.forEach((el) => {
+    const style = view.getComputedStyle(el);
+    const mask = style.maskImage || (style as any).webkitMaskImage || "none";
+    if (!mask || mask === "none") {
+      return;
+    }
+
+    const urlMatch = mask.match(/url\((['"]?)(.*?)\1\)/);
+    if (!urlMatch) {
+      return;
+    }
+
+    let svg = decodeSvgDataUri(urlMatch[2]);
+    if (!svg) {
+      return;
+    }
+
+    // Iconify utilities set `background-color: currentColor`, so the icon color
+    // resolves to the element's `color`.
+    const color = style.color || "#000";
+    svg = svg.replace(/currentColor/g, color);
+
+    const encoded = `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+    el.style.backgroundColor = "transparent";
+    el.style.backgroundImage = `url("${encoded}")`;
+    el.style.backgroundRepeat = "no-repeat";
+    el.style.backgroundPosition = "center";
+    el.style.backgroundSize = "contain";
+    el.style.maskImage = "none";
+    (el.style as any).webkitMaskImage = "none";
+  });
+};
+
 const resolveBrowserTarget = (target?: HTMLElement | string): HTMLElement => {
   if (typeof target === "string") {
     const raw = target.trim();
@@ -103,7 +175,10 @@ const buildBrowserCanvasOptions = (element: HTMLElement, scale: number, timeoutM
     removeContainer: true,
     logging: false,
     imageTimeout: timeoutMs,
-    foreignObjectRendering: true,
+    foreignObjectRendering: false,
+    onclone: (clonedDoc: Document) => {
+      inlineMaskedIcons(clonedDoc);
+    },
   };
 };
 
@@ -111,18 +186,22 @@ const captureCanvasWithShadowFallback = async (
   element: HTMLElement,
   html2canvasOptions: Record<string, unknown>
 ): Promise<HTMLCanvasElement> => {
-  const withForeignObject = await import("html2canvas-pro");
-  const capture = withForeignObject.default;
+  const module = await import("html2canvas-pro");
+  const capture = module.default;
 
+  // `foreignObjectRendering: false` is the reliable renderer. The `true` path
+  // can silently return a blank canvas (no error thrown) in many browsers, so
+  // it must not be the default — only fall back to it if the standard renderer
+  // throws.
   try {
     return await capture(element, {
       ...(html2canvasOptions as unknown as Record<string, unknown>),
-      foreignObjectRendering: true,
+      foreignObjectRendering: false,
     });
   } catch (error) {
     return capture(element, {
       ...(html2canvasOptions as unknown as Record<string, unknown>),
-      foreignObjectRendering: false,
+      foreignObjectRendering: true,
     });
   }
 };

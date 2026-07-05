@@ -15,6 +15,7 @@ declare module "html2canvas-pro" {
     imageTimeout?: number;
     x?: number;
     y?: number;
+    onclone?: (document: Document, element: HTMLElement) => void;
   }
 
   export default function html2canvas(
