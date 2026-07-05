@@ -81,13 +81,23 @@ const buildBrowserCanvasOptions = (element: HTMLElement, scale: number, timeoutM
   const width = validateDimension(element.scrollWidth) ?? element.clientWidth ?? 0;
   const height = validateDimension(element.scrollHeight) ?? element.clientHeight ?? 0;
 
+  // `width`/`height` crop to the full scrollable area. `windowWidth`/
+  // `windowHeight` must stay at the real viewport so the cloned document lays
+  // out exactly like the live page — forcing them to the full scroll size
+  // reflows viewport-relative CSS (100vh, sticky, centered max-width wrappers)
+  // and causes overflow / uneven margins in the capture.
+  const windowWidth =
+    typeof window !== "undefined" ? window.innerWidth || width : width;
+  const windowHeight =
+    typeof window !== "undefined" ? window.innerHeight || height : height;
+
   return {
     backgroundColor,
     width,
     height,
     scale,
-    windowWidth: width,
-    windowHeight: height,
+    windowWidth,
+    windowHeight,
     useCORS: true,
     allowTaint: false,
     removeContainer: true,
@@ -300,6 +310,18 @@ export async function captureFullPageScreenshot(
   }
 
   const element = resolveBrowserTarget(target);
+
+  // Wait for web/icon fonts to finish loading before capture. If fonts are
+  // still swapping, text is measured with fallback metrics (causing overlap)
+  // and icon-font glyphs render as empty boxes.
+  if (typeof document !== "undefined" && (document as any).fonts?.ready) {
+    try {
+      await (document as any).fonts.ready;
+    } catch {
+      // Ignore font-loading errors and proceed with capture.
+    }
+  }
+
   const canvasOptions = buildBrowserCanvasOptions(element, scale, timeoutMs, backgroundColor);
   const canvas = await captureCanvasWithShadowFallback(element, canvasOptions);
 
@@ -602,23 +624,24 @@ export async function exportPdfMultiPage(
   const imgWidth = contentWidth;
   const imgHeight = (canvas.height * contentWidth) / canvas.width;
 
-  const pageHeight = (contentWidth / canvas.width) * canvas.height;
-
-  if (canvas.height * (contentWidth / canvas.width) <= contentHeight) {
+  if (imgHeight <= contentHeight) {
+    // Fits on a single page.
     pdf.addImage(result.dataUrl, "PNG", margin, margin, imgWidth, imgHeight);
   } else {
-    let position = 0;
-    let remaining = canvas.height * (contentWidth / canvas.width);
+    // Slice the tall image across pages by shifting it up by one content
+    // height each page. `position` is the y of the image top (negative after
+    // the first page), so each page reveals the next slice through the window.
+    let heightLeft = imgHeight;
+    let position = margin;
 
-    while (remaining > 0) {
-      if (position !== 0) {
-        pdf.addPage();
-        position = 0;
-      }
+    pdf.addImage(result.dataUrl, "PNG", margin, position, imgWidth, imgHeight);
+    heightLeft -= contentHeight;
 
+    while (heightLeft > 0) {
+      position -= contentHeight;
+      pdf.addPage();
       pdf.addImage(result.dataUrl, "PNG", margin, position, imgWidth, imgHeight);
-      remaining -= contentHeight;
-      position -= pdfHeight - 2 * margin;
+      heightLeft -= contentHeight;
     }
   }
 
