@@ -1,4 +1,4 @@
-declare module "html2canvas" {
+declare module "html2canvas-pro" {
   export interface Options {
     backgroundColor?: string | null;
     scale?: number;

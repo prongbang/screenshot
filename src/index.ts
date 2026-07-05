@@ -101,7 +101,7 @@ const captureCanvasWithShadowFallback = async (
   element: HTMLElement,
   html2canvasOptions: Record<string, unknown>
 ): Promise<HTMLCanvasElement> => {
-  const withForeignObject = await import("html2canvas");
+  const withForeignObject = await import("html2canvas-pro");
   const capture = withForeignObject.default;
 
   try {

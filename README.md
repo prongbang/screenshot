@@ -79,7 +79,7 @@ npm i pdf-lib
 
 - `captureFullPageScreenshot(options?: BrowserScreenshotOptions): Promise<BrowserScreenshotResult>`
   - Browser-only.
-  - Captures full page from the current `document` using `html2canvas`.
+  - Captures full page from the current `document` using `html2canvas-pro`.
   - `target` can be an `HTMLElement` or element `id` (string).
 
 - `captureUrlScreenshot(url: string, options?: NodeScreenshotOptions): Promise<NodeScreenshotResult>`
