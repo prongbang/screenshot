@@ -118,9 +118,15 @@ const inlineMaskedIcons = (root: Document | HTMLElement): void => {
       return;
     }
 
-    // Iconify utilities set `background-color: currentColor`, so the icon color
-    // resolves to the element's `color`.
-    const color = style.color || "#000";
+    // Iconify/UnoCSS mask utilities paint the icon with `background-color`
+    // (usually `background-color: currentColor`), so the *resolved*
+    // background-color is the true icon color — more reliable than `color`,
+    // which is often just the inherited text color. Fall back to `color` when
+    // the background is transparent.
+    const bg = style.backgroundColor;
+    const isTransparentBg =
+      !bg || bg === "transparent" || /rgba?\([^)]*,\s*0\s*\)$/.test(bg);
+    const color = (isTransparentBg ? style.color : bg) || "#000";
     svg = svg.replace(/currentColor/g, color);
 
     const encoded = `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
@@ -157,11 +163,19 @@ const buildBrowserCanvasOptions = (element: HTMLElement, scale: number, timeoutM
   // `windowHeight` must stay at the real viewport so the cloned document lays
   // out exactly like the live page — forcing them to the full scroll size
   // reflows viewport-relative CSS (100vh, sticky, centered max-width wrappers)
-  // and causes overflow / uneven margins in the capture.
-  const windowWidth =
-    typeof window !== "undefined" ? window.innerWidth || width : width;
-  const windowHeight =
-    typeof window !== "undefined" ? window.innerHeight || height : height;
+  // and causes overflow in the capture.
+  //
+  // Use documentElement.clientWidth/Height (the layout viewport, which excludes
+  // the scrollbar gutter) rather than window.innerWidth/Height (which includes
+  // it). Otherwise a centered page is laid out in a wider window than it is
+  // cropped to, shifting content and leaving uneven left/right margins.
+  const docEl = typeof document !== "undefined" ? document.documentElement : null;
+  const viewportWidth =
+    docEl?.clientWidth || (typeof window !== "undefined" ? window.innerWidth : 0);
+  const viewportHeight =
+    docEl?.clientHeight || (typeof window !== "undefined" ? window.innerHeight : 0);
+  const windowWidth = viewportWidth || width;
+  const windowHeight = viewportHeight || height;
 
   return {
     backgroundColor,
