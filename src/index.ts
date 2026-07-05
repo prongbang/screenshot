@@ -462,3 +462,188 @@ export async function captureUrlScreenshot(
     }
   }
 }
+
+/**
+ * Wait for all images in an element to finish loading.
+ */
+export async function waitForImagesToLoad(element: HTMLElement): Promise<void> {
+  if (!isBrowser()) {
+    throw new Error("`waitForImagesToLoad` only runs in browser.");
+  }
+
+  const images = element.querySelectorAll("img");
+  await Promise.all(
+    Array.from(images).map(
+      (img) =>
+        new Promise<void>((resolve) => {
+          const imgElement = img as HTMLImageElement;
+          if (imgElement.complete) {
+            resolve();
+          } else {
+            imgElement.onload = () => resolve();
+            imgElement.onerror = () => {
+              console.warn("Image failed to load:", imgElement.src);
+              resolve();
+            };
+          }
+        })
+    )
+  );
+}
+
+/**
+ * Convert an image URL to base64 data URL.
+ */
+export async function convertImageToBase64(url: string): Promise<string> {
+  if (!isBrowser()) {
+    throw new Error("`convertImageToBase64` only runs in browser.");
+  }
+
+  const response = await fetch(url);
+  const blob = await response.blob();
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const result = reader.result as string;
+      resolve(result);
+    };
+    reader.onerror = () => reject(new Error("Failed to read image blob"));
+    reader.readAsDataURL(blob);
+  });
+}
+
+/**
+ * Replace all image src attributes with base64 data URLs.
+ * Useful for PDF export to avoid CORS issues.
+ */
+export async function replaceImagesWithBase64(element?: HTMLElement): Promise<void> {
+  if (!isBrowser()) {
+    throw new Error("`replaceImagesWithBase64` only runs in browser.");
+  }
+
+  const root = element ?? document.documentElement;
+  const images = root.querySelectorAll("img");
+
+  for (const img of Array.from(images)) {
+    const imgElement = img as HTMLImageElement;
+    const src = imgElement.src;
+
+    if (!src.startsWith("data:") && !imgElement.getAttribute("data-html2canvas-ignore")) {
+      try {
+        imgElement.src = await convertImageToBase64(src);
+      } catch (error) {
+        console.warn(`Failed to convert image to base64: ${src}`, error);
+      }
+    }
+  }
+}
+
+export interface ExportPdfOptions extends BaseScreenshotOptions {
+  orientation?: "p" | "portrait" | "l" | "landscape";
+  margin?: number;
+  waitForImages?: boolean;
+}
+
+/**
+ * Export a full-page screenshot as a multi-page PDF.
+ * Requires jsPDF: npm install jspdf
+ */
+export async function exportPdfMultiPage(
+  element: HTMLElement | string,
+  options: ExportPdfOptions = {}
+): Promise<void> {
+  if (!isBrowser()) {
+    throw new Error("`exportPdfMultiPage` only runs in browser.");
+  }
+
+  const dom = typeof element === "string"
+    ? document.querySelector(element)
+    : element;
+
+  if (!dom || !(dom instanceof HTMLElement)) {
+    throw new Error(`Target element not found.`);
+  }
+
+  if (options.waitForImages) {
+    await waitForImagesToLoad(dom);
+    await replaceImagesWithBase64(dom);
+  }
+
+  let jsPDF: any;
+  try {
+    const module = await import("jspdf");
+    jsPDF = module.jsPDF;
+  } catch (error) {
+    throw new Error(
+      "jsPDF is not available. Install it to use exportPdfMultiPage: npm i jspdf"
+    );
+  }
+
+  const result = await captureFullPageScreenshot({
+    format: "png",
+    target: dom,
+    quality: options.quality,
+    backgroundColor: options.backgroundColor,
+    scale: options.scale,
+    timeoutMs: options.timeoutMs,
+  });
+
+  const canvas = await htmlCanvasFromDataUrl(result.dataUrl);
+  const margin = options.margin ?? 10;
+  const orientation = options.orientation ?? "p";
+
+  const pdf = new jsPDF(orientation, "pt", "a4");
+  const pdfWidth = pdf.internal.pageSize.getWidth();
+  const pdfHeight = pdf.internal.pageSize.getHeight();
+
+  const contentWidth = pdfWidth - 2 * margin;
+  const contentHeight = pdfHeight - 2 * margin;
+
+  const imgWidth = contentWidth;
+  const imgHeight = (canvas.height * contentWidth) / canvas.width;
+
+  const pageHeight = (contentWidth / canvas.width) * canvas.height;
+
+  if (canvas.height * (contentWidth / canvas.width) <= contentHeight) {
+    pdf.addImage(result.dataUrl, "PNG", margin, margin, imgWidth, imgHeight);
+  } else {
+    let position = 0;
+    let remaining = canvas.height * (contentWidth / canvas.width);
+
+    while (remaining > 0) {
+      if (position !== 0) {
+        pdf.addPage();
+        position = 0;
+      }
+
+      pdf.addImage(result.dataUrl, "PNG", margin, position, imgWidth, imgHeight);
+      remaining -= contentHeight;
+      position -= pdfHeight - 2 * margin;
+    }
+  }
+
+  pdf.save(options.filename ?? "export.pdf");
+}
+
+/**
+ * Helper to create a canvas from a data URL.
+ */
+async function htmlCanvasFromDataUrl(dataUrl: string): Promise<HTMLCanvasElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        reject(new Error("Failed to get canvas context"));
+        return;
+      }
+      ctx.drawImage(img, 0, 0);
+      resolve(canvas);
+    };
+    img.onerror = () => reject(new Error("Failed to load image"));
+    img.src = dataUrl;
+  });
+}
